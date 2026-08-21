@@ -37,20 +37,50 @@ Provide a comprehensive analysis with these sections:
 Format with clear markdown headers.`;
 
     let responseText = "";
+    let usedModel = "demo";
+    let apiError = null;
     
+    // Try Gemini API if key exists
     if (model === "gemini" && process.env.GEMINI_API_KEY) {
-      const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-      const geminiModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
-      const result = await geminiModel.generateContent(prompt);
-      responseText = result.response.text();
+      try {
+        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+        
+        // Try gemini-1.5-flash first, then fall back to gemini-pro
+        const modelNames = ["gemini-1.5-flash", "gemini-pro", "gemini-1.0-pro"];
+        let lastError = null;
+        
+        for (const modelName of modelNames) {
+          try {
+            const geminiModel = genAI.getGenerativeModel({ model: modelName });
+            const result = await geminiModel.generateContent(prompt);
+            responseText = result.response.text();
+            usedModel = modelName;
+            break; // Success! Exit the loop
+          } catch (err) {
+            lastError = err;
+            // Continue to next model name
+          }
+        }
+        
+        if (!responseText && lastError) {
+          throw lastError;
+        }
+      } catch (err) {
+        apiError = err.message;
+        console.error("Gemini API Error:", err.message);
+        // Fall back to demo response
+        responseText = generateDemoResponse(question, headers, sampleRows, apiError);
+        usedModel = "demo (API failed)";
+      }
     } else {
-      responseText = generateDemoResponse(question, headers, sampleRows);
+      responseText = generateDemoResponse(question, headers, sampleRows, "No API key configured");
+      usedModel = "demo";
     }
 
     res.status(200).json({ 
       success: true, 
       analysis: responseText,
-      model: model,
+      model: usedModel,
       columns: headers,
       rowCount: lines.length - 1
     });
@@ -60,9 +90,16 @@ Format with clear markdown headers.`;
   }
 };
 
-function generateDemoResponse(question, headers, rows) {
+function generateDemoResponse(question, headers, rows, apiError) {
   const col = headers[0];
-  return `## SQL Query
+  let errorNote = "";
+  
+  if (apiError) {
+    errorNote = `\n\n---
+\n⚠️ **API Issue Detected:** ${apiError}\n\n**To fix this:**\n1. Go to [Google AI Studio](https://aistudio.google.com/app/apikey) and create a NEW API key\n2. Go to [Google Cloud Console](https://console.cloud.google.com/apis/library/generativelanguage.googleapis.com) and enable **Generative Language API**\n3. Make sure billing is enabled on your Google Cloud project\n4. Add the new key to Vercel Environment Variables as \`GEMINI_API_KEY\`\n\n*Showing demo response below:*\n\n`;
+  }
+  
+  return `${errorNote}## SQL Query
 \`\`\`sql
 SELECT ${headers.join(", ")}, COUNT(*) as total
 FROM uploaded_data
