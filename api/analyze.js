@@ -4,22 +4,21 @@ module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-
+  
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   try {
     const { question, csvData, filename, model = "gemini" } = req.body;
-
+    
     if (!question || !csvData) {
       return res.status(400).json({ error: "Missing question or csvData" });
     }
 
-    // Parse CSV to get columns and sample
     const lines = csvData.trim().split("\n");
     const headers = lines[0].split(",").map(h => h.trim());
     const sampleRows = lines.slice(1, 6);
-
+    
     const prompt = `You are an expert Data Analyst. A user uploaded a CSV file named "${filename || 'data.csv'}".
 
 CSV Columns: ${headers.join(", ")}
@@ -38,14 +37,13 @@ Provide a comprehensive analysis with these sections:
 Format with clear markdown headers.`;
 
     let responseText = "";
-
+    
     if (model === "gemini" && process.env.GEMINI_API_KEY) {
       const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
       const geminiModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
       const result = await geminiModel.generateContent(prompt);
       responseText = result.response.text();
     } else {
-      // Demo mode - realistic response
       responseText = generateDemoResponse(question, headers, sampleRows);
     }
 
