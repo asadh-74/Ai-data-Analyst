@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nexus AI — Data Analyst Agent</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="loader" id="loader">
+    <div class="loader-ring"></div>
+    <p>Initializing Nexus AI...</p>
+  </div>
+
+  <nav class="navbar">
+    <div class="nav-brand">
+      <div class="logo-icon">◈</div>
+      <span>Nexus AI</span>
+    </div>
+    <div class="nav-links">
+      <a href="#upload">Upload</a>
+      <a href="#analysis">Analysis</a>
+      <a href="#history">History</a>
+    </div>
+    <div class="nav-model">
+      <select id="modelSelect">
+        <option value="gemini">🧠 Gemini 1.5 Flash</option>
+        <option value="demo">⚡ Demo Mode</option>
+      </select>
+    </div>
+  </nav>
+
+  <main>
+    <section class="hero">
+      <div class="hero-bg">
+        <div class="grid-overlay"></div>
+        <div class="glow-orb"></div>
+      </div>
+      <div class="hero-content">
+        <div class="badge">◈ AI-Powered Data Analyst</div>
+        <h1>Turn Raw Data Into<br><span class="gradient-text">Intelligent Insights</span></h1>
+        <p>Upload any CSV file. Ask questions in plain English. Get SQL queries, Python code, charts, and actionable analysis — instantly.</p>
+      </div>
+    </section>
+
+    <section class="upload-section" id="upload">
+      <div class="upload-card" id="dropZone">
+        <div class="upload-icon">📊</div>
+        <h3>Drop your CSV file here</h3>
+        <p>or <span class="link">click to browse</span></p>
+        <input type="file" id="fileInput" accept=".csv,.txt" hidden>
+        <div class="file-info" id="fileInfo"></div>
+      </div>
+
+      <div class="sample-chips">
+        <span class="chip-label">Try sample datasets:</span>
+        <button class="chip" onclick="loadSample('sales')">Sales Data</button>
+        <button class="chip" onclick="loadSample('users')">User Analytics</button>
+        <button class="chip" onclick="loadSample('finance')">Finance Report</button>
+      </div>
+    </section>
+
+    <section class="workspace" id="analysis" style="display:none;">
+      <div class="workspace-header">
+        <div class="file-badge">
+          <span class="dot green"></span>
+          <span id="activeFile">data.csv</span>
+          <span class="meta" id="fileMeta">0 rows · 0 cols</span>
+        </div>
+        <div class="workspace-actions">
+          <button class="btn-ghost" onclick="clearData()">Clear</button>
+          <button class="btn-primary" onclick="exportAnalysis()">Export Report</button>
+        </div>
+      </div>
+
+      <div class="workspace-grid">
+        <div class="panel data-panel">
+          <div class="panel-header">
+            <h4>📋 Data Preview</h4>
+          </div>
+          <div class="table-wrap">
+            <table id="dataTable">
+              <thead></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="panel chat-panel">
+          <div class="panel-header">
+            <h4>💬 Ask Your Analyst</h4>
+          </div>
+          <div class="chat-messages" id="chatMessages">
+            <div class="msg ai">
+              <div class="msg-avatar">◈</div>
+              <div class="msg-bubble">
+                <p>Hi! I'm your AI Data Analyst. I've loaded your dataset. What would you like to know?</p>
+                <div class="suggestions">
+                  <button onclick="ask('Show me a summary of this dataset')">Show summary</button>
+                  <button onclick="ask('What trends do you see?')">Find trends</button>
+                  <button onclick="ask('Write a SQL query to get top 10 rows')">SQL query</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="chat-input">
+            <input type="text" id="questionInput" placeholder="Ask anything about your data..." onkeypress="if(event.key==='Enter')sendQuestion()">
+            <button onclick="sendQuestion()" id="sendBtn">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9"></polygon></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel result-panel" id="resultPanel" style="display:none;">
+        <div class="panel-header">
+          <h4>📈 Analysis Result</h4>
+          <span class="model-tag" id="resultModel">Gemini</span>
+        </div>
+        <div class="result-content" id="resultContent"></div>
+        <div class="chart-area" id="chartArea">
+          <canvas id="analysisChart"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <section class="features">
+      <div class="feature-card">
+        <div class="feature-icon">🔍</div>
+        <h4>Natural Language Queries</h4>
+        <p>Ask "What's the average revenue by month?" and get instant SQL + visualizations.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🐍</div>
+        <h4>Python Code Generation</h4>
+        <p>Auto-generated pandas & matplotlib code you can run locally or in Jupyter.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">📊</div>
+        <h4>Smart Chart Picker</h4>
+        <p>AI recommends the best chart type based on your data structure and question.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">⚡</div>
+        <h4>Agent Orchestration</h4>
+        <p>Multi-step reasoning: plan → query → analyze → visualize → interpret.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>Powered by Gemini API · Built for Vercel Serverless</p>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
