@@ -41,7 +41,7 @@ Format with clear markdown headers.`;
 
     if (model === "gemini" && process.env.GEMINI_API_KEY) {
       const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-      const geminiModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const geminiModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
       const result = await geminiModel.generateContent(prompt);
       responseText = result.response.text();
     } else {
