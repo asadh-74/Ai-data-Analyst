@@ -14,6 +14,17 @@
   --gradient-3: #ec4899;
 }
 
+:root[data-theme="light"] {
+  --bg: #f5f5fa;
+  --bg-elevated: #ffffff;
+  --bg-card: #ffffff;
+  --border: #e0e0ea;
+  --text: #1a1a24;
+  --text-muted: #5a5a6e;
+  --accent: #6366f1;
+  --accent-glow: rgba(99,102,241,0.15);
+}
+
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
@@ -22,6 +33,18 @@ body {
   color: var(--text);
   min-height: 100vh;
   overflow-x: hidden;
+  transition: background 0.3s ease, color 0.3s ease;
+}
+
+.theme-toggle {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  width: 36px; height: 36px;
+  margin-left: 10px;
+  cursor: pointer;
+  font-size: 16px;
+  display: inline-flex; align-items: center; justify-content: center;
 }
 
 /* Loader */

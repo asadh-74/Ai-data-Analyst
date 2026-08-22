@@ -1,15 +1,34 @@
 let currentCSV = "";
 let currentFilename = "";
 let currentHeaders = [];
+let chatHistory = [];
+let analysisChartInstance = null;
 
 // Loader
 window.addEventListener('load', () => {
   setTimeout(() => {
     document.getElementById('loader').classList.add('hidden');
   }, 800);
+  initTheme();
 });
 
-// Drag & Drop
+// ---------- Theme toggle (dark/light) ----------
+function initTheme() {
+  const saved = localStorage.getItem('nexus-theme') || 'dark';
+  applyTheme(saved);
+}
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  localStorage.setItem('nexus-theme', theme);
+  const btn = document.getElementById('themeToggle');
+  if (btn) btn.textContent = theme === 'dark' ? '🌙' : '☀️';
+}
+function toggleTheme() {
+  const current = document.documentElement.getAttribute('data-theme') || 'dark';
+  applyTheme(current === 'dark' ? 'light' : 'dark');
+}
+
+// ---------- Drag & Drop / file loading ----------
 const dropZone = document.getElementById('dropZone');
 const fileInput = document.getElementById('fileInput');
 
@@ -42,6 +61,8 @@ function handleFile(file) {
   reader.readAsText(file);
 }
 
+// Lightweight client-side CSV split, used only for the preview table.
+// The server does the real, quote-aware parsing for analysis.
 function loadData(csv) {
   const lines = csv.trim().split('\n');
   currentHeaders = lines[0].split(',').map(h => h.trim());
@@ -52,10 +73,10 @@ function loadData(csv) {
 
   const thead = document.querySelector('#dataTable thead');
   const tbody = document.querySelector('#dataTable tbody');
-  thead.innerHTML = '<tr>' + currentHeaders.map(h => `<th>${h}</th>`).join('') + '</tr>';
+  thead.innerHTML = '<tr>' + currentHeaders.map(h => `<th>${escapeHtml(h)}</th>`).join('') + '</tr>';
   tbody.innerHTML = rows.map(r => {
     const cells = r.split(',');
-    return '<tr>' + cells.map(c => `<td>${c.trim()}</td>`).join('') + '</tr>';
+    return '<tr>' + cells.map(c => `<td>${escapeHtml(c.trim())}</td>`).join('') + '</tr>';
   }).join('');
 }
 
@@ -101,6 +122,8 @@ function clearData() {
   currentCSV = "";
   currentFilename = "";
   currentHeaders = [];
+  chatHistory = [];
+  if (analysisChartInstance) { analysisChartInstance.destroy(); analysisChartInstance = null; }
   document.getElementById('upload').style.display = 'block';
   document.getElementById('analysis').style.display = 'none';
   document.getElementById('resultPanel').style.display = 'none';
@@ -119,6 +142,7 @@ function ask(text) {
   sendQuestion();
 }
 
+// ---------- Analysis (calls /api/analyze) ----------
 async function sendQuestion() {
   const input = document.getElementById('questionInput');
   const btn = document.getElementById('sendBtn');
@@ -129,12 +153,11 @@ async function sendQuestion() {
     alert('Please upload a CSV file first'); return;
   }
 
-  // Add user message
   addMessage(question, 'user');
+  chatHistory.push({ role: 'user', content: question });
   input.value = '';
   btn.disabled = true;
 
-  // Show typing
   const typingId = 'typing-' + Date.now();
   document.getElementById('chatMessages').insertAdjacentHTML('beforeend', `
     <div class="msg ai" id="${typingId}">
@@ -159,8 +182,9 @@ async function sendQuestion() {
 
     if (data.success) {
       addMessage(data.analysis, 'ai', true);
-      showResult(data.analysis, model);
-      drawChart(data.columns);
+      chatHistory.push({ role: 'assistant', content: data.analysis });
+      showResult(data.analysis, data.model, data.rowCount);
+      drawChart(data.chartData);
     } else {
       addMessage('Error: ' + data.error, 'ai');
     }
@@ -190,50 +214,57 @@ function scrollChat() {
   el.scrollTop = el.scrollHeight;
 }
 
-function showResult(analysis, model) {
+function showResult(analysis, model, rowCount) {
   document.getElementById('resultPanel').style.display = 'block';
   document.getElementById('resultContent').innerHTML = renderMarkdown(analysis);
-  document.getElementById('resultModel').textContent = model === 'gemini' ? 'Gemini 1.5 Flash' : 'Demo Mode';
+  const label = model && model.startsWith('gemini') ? `Gemini (${model})`
+    : model === 'demo (API failed)' ? 'Demo Mode (API failed — see message above)'
+    : 'Demo Mode';
+  document.getElementById('resultModel').textContent = label + (rowCount ? ` · ${rowCount.toLocaleString()} rows analyzed` : '');
   document.getElementById('resultPanel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
-function drawChart(columns) {
+// ---------- Real chart, driven by real chartData from the backend ----------
+function drawChart(chartData) {
   const canvas = document.getElementById('analysisChart');
+  if (analysisChartInstance) {
+    analysisChartInstance.destroy();
+    analysisChartInstance = null;
+  }
+  if (!chartData || !chartData.labels || !chartData.labels.length) return;
+
   const ctx = canvas.getContext('2d');
-  canvas.width = 600; canvas.height = 300;
+  const type = ['bar', 'line', 'pie', 'doughnut'].includes(chartData.type) ? chartData.type : 'bar';
 
-  // Simple bar chart demo
-  const bars = columns.slice(0, 5);
-  const values = bars.map(() => Math.floor(Math.random() * 80) + 20);
-  const max = Math.max(...values);
-
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  const barWidth = 80;
-  const gap = 30;
-  const startX = (canvas.width - (bars.length * (barWidth + gap) - gap)) / 2;
-
-  bars.forEach((label, i) => {
-    const h = (values[i] / max) * 200;
-    const x = startX + i * (barWidth + gap);
-    const y = canvas.height - h - 40;
-
-    const grad = ctx.createLinearGradient(0, y, 0, y + h);
-    grad.addColorStop(0, '#6366f1');
-    grad.addColorStop(1, '#a855f7');
-
-    ctx.fillStyle = grad;
-    ctx.fillRect(x, y, barWidth, h);
-
-    ctx.fillStyle = '#8888a0';
-    ctx.font = '12px Inter';
-    ctx.textAlign = 'center';
-    ctx.fillText(label, x + barWidth/2, canvas.height - 15);
-
-    ctx.fillStyle = '#e2e2e8';
-    ctx.fillText(values[i], x + barWidth/2, y - 8);
+  analysisChartInstance = new Chart(ctx, {
+    type,
+    data: {
+      labels: chartData.labels,
+      datasets: [{
+        label: chartData.title || 'Result',
+        data: chartData.values,
+        backgroundColor: ['#6366f1', '#a855f7', '#ec4899', '#f97316', '#10b981', '#0ea5e9', '#eab308', '#ef4444', '#8b5cf6', '#14b8a6'],
+        borderColor: '#6366f1',
+        borderWidth: type === 'line' ? 2 : 0,
+        fill: type === 'line' ? false : true,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        title: { display: !!chartData.title, text: chartData.title, color: '#e2e2e8' },
+        legend: { labels: { color: '#e2e2e8' }, display: type === 'pie' || type === 'doughnut' },
+      },
+      scales: (type === 'pie' || type === 'doughnut') ? {} : {
+        x: { ticks: { color: '#8888a0' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+        y: { ticks: { color: '#8888a0' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+      }
+    }
   });
 }
+
+// ---------- Chat panel (calls /api/chat) ----------
+// Wired to the same question box's "quick ask" suggestions when no CSV question is needed.
 
 function renderMarkdown(text) {
   return text
@@ -242,6 +273,7 @@ function renderMarkdown(text) {
     .replace(/```([\w]*)\n?([\s\S]*?)```/g, '<pre><code>$2</code></pre>')
     .replace(/`([^`]+)`/g, '<code>$1</code>')
     .replace(/• (.*)/g, '<li>$1</li>')
+    .replace(/^- (.*)$/gm, '<li>$1</li>')
     .replace(/\n/g, '<br>');
 }
 
@@ -251,11 +283,33 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
+// ---------- Export: polished PDF (falls back to text if the PDF lib fails to load) ----------
 function exportAnalysis() {
-  const content = document.getElementById('resultContent').innerText;
-  if (!content) { alert('No analysis to export yet'); return; }
-  const blob = new Blob([content], { type: 'text/plain' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = 'analysis_report.txt'; a.click();
+  const resultEl = document.getElementById('resultContent');
+  if (!resultEl || !resultEl.innerHTML.trim()) { alert('No analysis to export yet'); return; }
+
+  if (typeof html2pdf === 'undefined') {
+    const content = resultEl.innerText;
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'analysis_report.txt'; a.click();
+    return;
+  }
+
+  const wrapper = document.createElement('div');
+  wrapper.style.padding = '24px';
+  wrapper.style.fontFamily = 'Inter, sans-serif';
+  wrapper.style.color = '#111';
+  wrapper.innerHTML = `
+    <h1 style="font-size:20px;margin-bottom:4px;">Nexus AI — Analysis Report</h1>
+    <p style="color:#666;font-size:12px;margin-bottom:16px;">${escapeHtml(currentFilename || 'dataset')} · ${new Date().toLocaleString()}</p>
+    <div>${resultEl.innerHTML}</div>
+  `;
+
+  html2pdf().from(wrapper).set({
+    margin: 10,
+    filename: 'analysis_report.pdf',
+    html2canvas: { backgroundColor: '#ffffff' },
+  }).save();
 }

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -26,9 +26,10 @@
     </div>
     <div class="nav-model">
       <select id="modelSelect">
-        <option value="gemini">🧠 Gemini 1.5 Flash</option>
+        <option value="gemini">🧠 Gemini (auto: 2.5 Flash)</option>
         <option value="demo">⚡ Demo Mode</option>
       </select>
+      <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle theme">🌙</button>
     </div>
   </nav>
 
@@ -154,6 +155,8 @@
     <p>Powered by Gemini API · Built for Vercel Serverless</p>
   </footer>
 
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
   <script src="script.js"></script>
 </body>
 </html>
