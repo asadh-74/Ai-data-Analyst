@@ -3,7 +3,7 @@ const { GoogleGenAI } = require("@google/genai");
 // Gemini 1.0 and 1.5 models (gemini-pro, gemini-1.5-flash, gemini-1.0-pro) were
 // permanently retired by Google in 2026 and now return 404 on every call.
 // These are the current, supported model IDs (checked most-capable/cheap first).
-const MODEL_CANDIDATES = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3.1-flash-lite"];
+const MODEL_CANDIDATES = [process.env.GEMINI_MODEL || "gemini-2.5-flash"];
 
 // Above this many rows we stop sending the raw file to the model and switch to
 // stats + a sample instead, so a 100k+ row CSV doesn't blow the prompt/token budget.
@@ -21,7 +21,7 @@ module.exports = async (req, res) => {
   try {
     const { question, csvData, filename, model = "gemini" } = req.body;
 
-    if (!question || !csvData) {
+    if (typeof question !== "string" || typeof csvData !== "string" || !question.trim() || !csvData.trim() || question.length > 2000) {
       return res.status(400).json({ error: "Missing question or csvData" });
     }
 
@@ -69,8 +69,8 @@ module.exports = async (req, res) => {
 
         if (!responseText) throw lastError || new Error("No response from any Gemini model");
       } catch (err) {
-        apiError = err.message || String(err);
-        console.error("Gemini API Error:", apiError);
+        apiError = "The AI provider is unavailable. Showing computed statistics instead.";
+        console.error("Gemini request failed");
         responseText = null;
       }
     }
@@ -93,8 +93,8 @@ module.exports = async (req, res) => {
       stats,
     });
   } catch (error) {
-    console.error("Analysis error:", error);
-    res.status(500).json({ error: error.message });
+    console.error("Analysis request failed");
+    res.status(400).json({ error: "Could not analyze this CSV. Check the file format and question." });
   }
 };
 
@@ -131,7 +131,7 @@ function parseCSV(text) {
 
   const headers = cleaned[0].map(h => h.trim());
   const dataRows = cleaned.slice(1).map(r => {
-    const obj = {};
+    const obj = Object.create(null);
     headers.forEach((h, idx) => { obj[h] = (r[idx] ?? "").trim(); });
     return obj;
   });
@@ -148,10 +148,10 @@ function sampleRows(rows, n) {
 
 // --- Real statistics over the FULL dataset, not just a preview ---
 function computeStats(headers, rows) {
-  const stats = {};
+  const stats = Object.create(null);
   for (const h of headers) {
     const values = rows.map(r => r[h]).filter(v => v !== "" && v != null);
-    const numericValues = values.map(v => Number(v)).filter(v => !Number.isNaN(v));
+    const numericValues = values.map(v => Number(v)).filter(v => Number.isFinite(v));
     const isNumeric = numericValues.length > 0 && numericValues.length >= values.length * 0.8;
 
     if (isNumeric) {
@@ -161,13 +161,13 @@ function computeStats(headers, rows) {
         type: "numeric",
         count: numericValues.length,
         missing: rows.length - values.length,
-        min: Math.min(...numericValues),
-        max: Math.max(...numericValues),
+        min: numericValues.reduce((a,b) => Math.min(a,b), Infinity),
+        max: numericValues.reduce((a,b) => Math.max(a,b), -Infinity),
         mean: Number(mean.toFixed(2)),
         sum: Number(sum.toFixed(2)),
       };
     } else {
-      const counts = {};
+      const counts = Object.create(null);
       for (const v of values) counts[v] = (counts[v] || 0) + 1;
       const top = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 8)
         .map(([value, count]) => ({ value, count }));
@@ -264,9 +264,7 @@ function generateDemoResponse(question, headers, stats, apiError) {
   const colStats = stats[col];
   let errorNote = "";
 
-  if (apiError) {
-    errorNote = `\n\n---\n\n⚠️ **API Issue Detected:** ${apiError}\n\n**To fix this:**\n1. Go to [Google AI Studio](https://aistudio.google.com/app/apikey) and create a NEW API key\n2. Go to [Google Cloud Console](https://console.cloud.google.com/apis/library/generativelanguage.googleapis.com) and enable the **Generative Language API**\n3. Add the key to your Vercel project's Environment Variables as \`GEMINI_API_KEY\` (Project Settings → Environment Variables), then redeploy\n4. Make sure the model names in \`api/analyze.js\` match currently supported Gemini models (gemini-1.5-flash and gemini-pro are retired)\n\n*Showing a stats-based demo response below:*\n\n`;
-  }
+  errorNote = "**Computed statistics mode — not an AI answer.** " + (apiError || "AI is not configured or statistics mode was selected.") + "\n\n";
 
   const statsLines = headers.map(h => {
     const s = stats[h];
@@ -277,9 +275,9 @@ function generateDemoResponse(question, headers, stats, apiError) {
 
   return `${errorNote}## SQL Query
 \`\`\`sql
-SELECT ${headers.join(", ")}, COUNT(*) as total
+SELECT "${col.replace(/"/g, '""')}", COUNT(*) as total
 FROM uploaded_data
-GROUP BY ${col}
+GROUP BY "${col.replace(/"/g, '""')}"
 ORDER BY total DESC
 LIMIT 10;
 \`\`\`

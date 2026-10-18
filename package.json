@@ -4,10 +4,15 @@
   "description": "AI Data Analyst Agent - Upload CSV, ask questions, get SQL, Python & charts",
   "scripts": {
     "dev": "vercel dev",
-    "deploy": "vercel --prod"
+    "deploy": "vercel --prod",
+    "start": "node server.js",
+    "test": "node --test"
   },
   "dependencies": {
     "@google/genai": "^1.0.0"
   },
-  "devDependencies": {}
+  "devDependencies": {},
+  "engines": {
+    "node": ">=22"
+  }
 }

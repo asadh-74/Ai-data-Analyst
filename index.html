@@ -27,7 +27,7 @@
     <div class="nav-model">
       <select id="modelSelect">
         <option value="gemini">🧠 Gemini (auto: 2.5 Flash)</option>
-        <option value="demo">⚡ Demo Mode</option>
+        <option value="demo">Computed statistics</option>
       </select>
       <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle theme">🌙</button>
     </div>
@@ -46,6 +46,7 @@
       </div>
     </section>
 
+    <p id="aiStatus" style="text-align:center" role="status">Checking AI availability…</p>
     <section class="upload-section" id="upload">
       <div class="upload-card" id="dropZone">
         <div class="upload-icon">📊</div>

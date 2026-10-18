@@ -1,6 +1,6 @@
 const { GoogleGenAI } = require("@google/genai");
 
-const MODEL_CANDIDATES = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3.1-flash-lite"];
+const MODEL_CANDIDATES = [process.env.GEMINI_MODEL || "gemini-2.5-flash"];
 
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -57,9 +57,9 @@ Reply in 2-4 short sentences, plain language, no markdown headers.`;
       suggestions: ["Show summary statistics", "Find correlations", "Detect outliers", "Create a dashboard"],
     });
   } catch (error) {
-    console.error("Chat error:", error);
+    console.error("Chat request failed");
     res.status(200).json({
-      reply: `I hit an error talking to the model: ${error.message}. Upload a CSV and ask a specific question — that endpoint has more detailed error handling.`,
+      reply: `I hit an error talking to the model: provider unavailable. Upload a CSV and ask a specific question — that endpoint has more detailed error handling.`,
       suggestions: ["Show summary statistics", "Find correlations"],
     });
   }

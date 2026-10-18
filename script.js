@@ -267,7 +267,7 @@ function drawChart(chartData) {
 // Wired to the same question box's "quick ask" suggestions when no CSV question is needed.
 
 function renderMarkdown(text) {
-  return text
+  return escapeHtml(String(text))
     .replace(/## (.*)/g, '<h3>$1</h3>')
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
     .replace(/```([\w]*)\n?([\s\S]*?)```/g, '<pre><code>$2</code></pre>')
@@ -313,3 +313,5 @@ function exportAnalysis() {
     html2canvas: { backgroundColor: '#ffffff' },
   }).save();
 }
+
+fetch('/api/status').then(r=>r.json()).then(s=>{document.getElementById('aiStatus').textContent=s.aiConfigured?'AI available. Use only sanitized data; analysis sends a sample and summary to the AI provider.':'Computed statistics available. AI answers require server configuration. Use sample data to try the demo.';if(!s.aiConfigured)document.getElementById('modelSelect').value='demo'}).catch(()=>{document.getElementById('aiStatus').textContent='Service unavailable. Please retry.'});
