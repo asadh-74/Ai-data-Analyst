@@ -3,6 +3,7 @@ let currentFilename = "";
 let currentHeaders = [];
 let chatHistory = [];
 let analysisChartInstance = null;
+const sessionAnalyses = [];
 
 // Loader
 window.addEventListener('load', () => {
@@ -45,9 +46,10 @@ fileInput.addEventListener('change', (e) => {
 });
 
 function handleFile(file) {
-  if (!file.name.endsWith('.csv') && !file.name.endsWith('.txt')) {
+  if (!/\.(csv|txt)$/i.test(file.name)) {
     alert('Please upload a CSV file'); return;
   }
+  if(file.size > 1.5 * 1024 * 1024){alert("Choose a CSV smaller than 1.5 MB.");return;}
   const reader = new FileReader();
   reader.onload = (e) => {
     currentCSV = e.target.result;
@@ -64,20 +66,14 @@ function handleFile(file) {
 // Lightweight client-side CSV split, used only for the preview table.
 // The server does the real, quote-aware parsing for analysis.
 function loadData(csv) {
-  const lines = csv.trim().split('\n');
-  currentHeaders = lines[0].split(',').map(h => h.trim());
-  const rows = lines.slice(1, 11); // Show first 10
-
-  document.getElementById('activeFile').textContent = currentFilename;
-  document.getElementById('fileMeta').textContent = `${lines.length - 1} rows · ${currentHeaders.length} cols`;
-
-  const thead = document.querySelector('#dataTable thead');
-  const tbody = document.querySelector('#dataTable tbody');
-  thead.innerHTML = '<tr>' + currentHeaders.map(h => `<th>${escapeHtml(h)}</th>`).join('') + '</tr>';
-  tbody.innerHTML = rows.map(r => {
-    const cells = r.split(',');
-    return '<tr>' + cells.map(c => `<td>${escapeHtml(c.trim())}</td>`).join('') + '</tr>';
-  }).join('');
+  const records=[];let row=[],field='',quoted=false;
+  for(let i=0;i<csv.length;i++){const c=csv[i];if(quoted){if(c==='"'){if(csv[i+1]==='"'){field+='"';i++}else quoted=false}else field+=c}else if(c==='"')quoted=true;else if(c===','){row.push(field);field=''}else if(c==='\n'){row.push(field.replace(/\r$/,''));if(row.some(x=>x.trim()))records.push(row);row=[];field=''}else field+=c}
+  if(field||row.length){row.push(field);if(row.some(x=>x.trim()))records.push(row)}
+  currentHeaders=(records[0]||[]).map(x=>x.trim());
+  document.getElementById('activeFile').textContent=currentFilename;
+  document.getElementById('fileMeta').textContent=Math.max(0,records.length-1)+' rows · '+currentHeaders.length+' cols';
+  document.querySelector('#dataTable thead').innerHTML='<tr>'+currentHeaders.map(h=>'<th>'+escapeHtml(h)+'</th>').join('')+'</tr>';
+  document.querySelector('#dataTable tbody').innerHTML=records.slice(1,11).map(row=>'<tr>'+currentHeaders.map((_,i)=>'<td>'+escapeHtml(row[i]||'')+'</td>').join('')+'</tr>').join('');
 }
 
 function loadSample(type) {
@@ -146,6 +142,7 @@ function ask(text) {
 async function sendQuestion() {
   const input = document.getElementById('questionInput');
   const btn = document.getElementById('sendBtn');
+  if(btn.disabled)return;
   const question = input.value.trim();
   if (!question) return;
 
@@ -178,18 +175,20 @@ async function sendQuestion() {
     });
     const data = await res.json();
 
-    document.getElementById(typingId).remove();
+    document.getElementById(typingId)?.remove();
 
     if (data.success) {
       addMessage(data.analysis, 'ai', true);
       chatHistory.push({ role: 'assistant', content: data.analysis });
       showResult(data.analysis, data.model, data.rowCount);
       drawChart(data.chartData);
+      sessionAnalyses.unshift({filename:currentFilename,question,analysis:data.analysis,chart:data.chartData,model:data.model,rows:data.rowCount,time:new Date().toLocaleTimeString()});
+      sessionAnalyses.splice(10); renderHistory();
     } else {
       addMessage('Error: ' + data.error, 'ai');
     }
   } catch (err) {
-    document.getElementById(typingId).remove();
+    document.getElementById(typingId)?.remove();
     addMessage('Network error. Please try again.', 'ai');
   }
 
@@ -219,7 +218,7 @@ function showResult(analysis, model, rowCount) {
   document.getElementById('resultContent').innerHTML = renderMarkdown(analysis);
   const label = model && model.startsWith('gemini') ? `Gemini (${model})`
     : model === 'demo (API failed)' ? 'Demo Mode (API failed — see message above)'
-    : 'Demo Mode';
+    : 'Computed statistics';
   document.getElementById('resultModel').textContent = label + (rowCount ? ` · ${rowCount.toLocaleString()} rows analyzed` : '');
   document.getElementById('resultPanel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
@@ -227,6 +226,7 @@ function showResult(analysis, model, rowCount) {
 // ---------- Real chart, driven by real chartData from the backend ----------
 function drawChart(chartData) {
   const canvas = document.getElementById('analysisChart');
+  if(typeof Chart==='undefined'){document.getElementById('chartArea').textContent='Chart library unavailable. Statistics and report remain available.';return;}
   if (analysisChartInstance) {
     analysisChartInstance.destroy();
     analysisChartInstance = null;
@@ -315,3 +315,5 @@ function exportAnalysis() {
 }
 
 fetch('/api/status').then(r=>r.json()).then(s=>{document.getElementById('aiStatus').textContent=s.aiConfigured?'AI available. Use only sanitized data; analysis sends a sample and summary to the AI provider.':'Computed statistics available. AI answers require server configuration. Use sample data to try the demo.';if(!s.aiConfigured)document.getElementById('modelSelect').value='demo'}).catch(()=>{document.getElementById('aiStatus').textContent='Service unavailable. Please retry.'});
+
+function renderHistory(){const list=document.getElementById('historyList');list.replaceChildren();sessionAnalyses.forEach(item=>{const row=document.createElement('div');row.style.cssText='padding:12px 0;border-bottom:1px solid #7774;display:flex;gap:16px;align-items:center;justify-content:space-between';const label=document.createElement('span');label.textContent=item.filename+' · '+item.question+' · '+item.time;const button=document.createElement('button');button.className='btn-ghost';button.textContent='View result';button.onclick=()=>{showResult(item.analysis,item.model,item.rows);drawChart(item.chart)};row.append(label,button);list.append(row)})}
