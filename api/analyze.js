@@ -58,6 +58,7 @@ module.exports = async (req, res) => {
             const result = await ai.models.generateContent({
               model: modelName,
               contents: prompt,
+              config: {maxOutputTokens:4096},
             });
             responseText = result.text;
             usedModel = modelName;
@@ -71,6 +72,7 @@ module.exports = async (req, res) => {
       } catch (err) {
         apiError = "The AI provider is unavailable. Showing computed statistics instead.";
         console.error("Gemini request failed");
+        apiError = /API key not valid|invalid.*key|API_KEY_INVALID/i.test(err.message||'') ? 'The configured AI key was rejected by the provider.' : (Number(err.status)===429 ? 'AI quota or rate limit reached.' : 'The AI provider could not complete the request.');
         responseText = null;
       }
     }
@@ -129,7 +131,11 @@ function parseCSV(text) {
   const cleaned = rows.filter(r => r.some(c => c.trim() !== ""));
   if (!cleaned.length) return { headers: [], rows: [] };
 
+  if(inQuotes) throw new Error('CSV contains an unclosed quoted field');
   const headers = cleaned[0].map(h => h.trim());
+  if(headers.some(h=>!h)||new Set(headers).size!==headers.length)throw new Error('CSV needs unique nonempty headers');
+  if(headers.length>100||cleaned.length>50001)throw new Error('Use at most 100 columns and 50000 rows');
+  if(cleaned.slice(1).some(r=>r.length!==headers.length))throw new Error('CSV rows must match the header column count');
   const dataRows = cleaned.slice(1).map(r => {
     const obj = Object.create(null);
     headers.forEach((h, idx) => { obj[h] = (r[idx] ?? "").trim(); });
@@ -305,3 +311,25 @@ ${colStats.type === "numeric" ? "**Histogram** — good for seeing the distribut
 - \`${col}\` is ${colStats.type === "numeric" ? "numeric" : `categorical with ${colStats.distinct} distinct values`}
 - This is a fallback response — no live model call was made`;
 }
+
+
+module.exports.inspect = function(csvData){
+  if(typeof csvData!=='string')throw Error('Missing CSV text');
+  const parsed=parseCSV(csvData);if(!parsed.rows.length)throw Error('CSV has no data rows');
+  const stats=computeStats(parsed.headers,parsed.rows),numeric=parsed.headers.filter(h=>stats[h].type==='numeric');
+  const duplicates=parsed.rows.length-new Set(parsed.rows.map(r=>JSON.stringify(r))).size;
+  const missing=Object.values(stats).reduce((a,s)=>a+s.missing,0);
+  const correlations=[];
+  for(let i=0;i<Math.min(numeric.length,8);i++)for(let j=i+1;j<Math.min(numeric.length,8);j++){
+    const a=numeric[i],b=numeric[j],pairs=parsed.rows.filter(r=>r[a]!==''&&r[b]!==''&&Number.isFinite(Number(r[a]))&&Number.isFinite(Number(r[b]))).map(r=>[Number(r[a]),Number(r[b])]);
+    if(pairs.length<3)continue;const n=pairs.length,mx=pairs.reduce((s,r)=>s+r[0],0)/n,my=pairs.reduce((s,r)=>s+r[1],0)/n;
+    let cov=0,vx=0,vy=0;for(const [x,y] of pairs){cov+=(x-mx)*(y-my);vx+=(x-mx)**2;vy+=(y-my)**2}if(vx&&vy)correlations.push({a,b,r:Number((cov/Math.sqrt(vx*vy)).toFixed(4))});
+  }
+  return {headers:parsed.headers,rowCount:parsed.rows.length,preview:parsed.rows.slice(0,10),stats,quality:{duplicateRows:duplicates,missingCells:missing,numericColumns:numeric.length,correlations},chartData:fallbackChartData(stats)};
+};
+module.exports.chart = function(body){
+  const {headers,rows}=parseCSV(body.csvData||'');const {x,y,aggregation='sum'}=body;
+  if(!headers.includes(x)||!['sum','mean','count'].includes(aggregation)||(aggregation!=='count'&&!headers.includes(y)))throw Error('Choose valid chart columns and aggregation');
+  const groups=new Map();for(const row of rows){const label=row[x]||'(missing)';if(aggregation!=='count'&&(row[y]===''||!Number.isFinite(Number(row[y]))))continue;const g=groups.get(label)||{sum:0,count:0};g.count++;if(aggregation!=='count')g.sum+=Number(row[y]);groups.set(label,g)}
+  const items=[...groups].slice(0,30);return {type:'bar',title:aggregation+' by '+x,labels:items.map(([k])=>k),values:items.map(([,g])=>aggregation==='count'?g.count:aggregation==='mean'?Number((g.sum/g.count).toFixed(2)):Number(g.sum.toFixed(2))),groupCount:groups.size,shownGroups:items.length};
+};

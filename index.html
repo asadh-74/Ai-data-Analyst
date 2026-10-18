@@ -77,7 +77,7 @@
         </div>
       </div>
 
-      <div class="workspace-grid">
+      <div class="panel" style="padding:24px;margin-bottom:24px"><h3>Data quality &amp; chart builder</h3><div id="qualityStatus" role="status">Inspecting dataset…</div><div id="qualityDetails"></div><div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:18px"><label>Group by <select id="chartX"></select></label><label>Measure <select id="chartY"></select></label><label>Aggregation <select id="aggregation"><option value="sum">Sum</option><option value="mean">Mean</option><option value="count">Count</option></select></label><button id="buildChart" class="btn-primary">Build chart</button></div></div><div class="workspace-grid">
         <div class="panel data-panel">
           <div class="panel-header">
             <h4>📋 Data Preview</h4>
@@ -129,7 +129,7 @@
     </section>
 
     <section id="history" class="panel" style="margin:32px auto;padding:24px;max-width:1200px">
-      <h3>Session history</h3><p>Analysis results from this tab only. Reloading clears this history.</p><div id="historyList">No analyses yet.</div>
+      <h3>Session history</h3><p>Results saved for this browser session. Demo server storage may reset on redeployment.</p><div id="historyList">No analyses yet.</div>
     </section>
     <section class="features">
       <div class="feature-card">

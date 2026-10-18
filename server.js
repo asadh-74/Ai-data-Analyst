@@ -1,16 +1,37 @@
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
-const handlers = { '/api/analyze': require('./api/analyze'), '/api/chat': require('./api/chat') };
+const crypto=require('node:crypto');
+const runFile=process.env.ANALYSIS_HISTORY_FILE||'/tmp/nexus-analysis-history.json';
+let histories={};try{histories=JSON.parse(fs.readFileSync(runFile,'utf8'))}catch{}
+function persist(){fs.writeFileSync(runFile+'.tmp',JSON.stringify(histories),{mode:0o600});fs.renameSync(runFile+'.tmp',runFile)}
+const analyze=require('./api/analyze');
+const handlers = { '/api/analyze': require('./api/analyze'), '/api/chat': require('./api/chat'), '/api/inspect':(req,res)=>{try{res.json(analyze.inspect(req.body.csvData))}catch{res.status(422).json({error:'Invalid CSV: check unique headers, quoting and row lengths.'})}}, '/api/chart':(req,res)=>{try{res.json(analyze.chart(req.body))}catch{res.status(422).json({error:'Select valid columns and a numeric measure.'})}} };
 const assets = {'/':'index.html','/index.html':'index.html','/style.css':'style.css','/script.js':'script.js'};
 const types={'.html':'text/html; charset=utf-8','.css':'text/css','.js':'application/javascript'};
 const windows = new Map();
 const server = http.createServer(async(req,res)=>{
   res.status = n => {res.statusCode=n;return res};
-  res.json = obj => {res.setHeader('Content-Type','application/json');res.end(JSON.stringify(obj))};
+  let sid=(req.headers.cookie||'').split(';').map(x=>x.trim()).find(x=>x.startsWith('analysis_session='))?.split('=')[1];
+  if(!/^[a-f0-9]{48}$/.test(sid||'')){sid=crypto.randomBytes(24).toString('hex');res.setHeader('Set-Cookie','analysis_session='+sid+'; HttpOnly; SameSite=Lax; Path=/; Max-Age=86400'+(process.env.RENDER?'; Secure':''))}
+  res.json = obj => {
+    if(req.url.split('?')[0]==='/api/analyze'&&obj.success){
+      const run={id:crypto.randomUUID(),created:new Date().toISOString(),filename:String(req.body.filename||'data.csv').slice(0,150),question:String(req.body.question).slice(0,2000),result:obj};
+      histories[sid]=[run,...(histories[sid]||[])].slice(0,10);
+      const sessions=Object.keys(histories);if(sessions.length>100)delete histories[sessions[0]];
+      try{persist();obj.runId=run.id}catch{obj.historyWarning='History storage unavailable; analysis succeeded.'}
+    }
+    res.setHeader('Content-Type','application/json');res.end(JSON.stringify(obj));
+  };
   res.setHeader('X-Content-Type-Options','nosniff');
   res.setHeader('Referrer-Policy','strict-origin-when-cross-origin');
   const pathname = new URL(req.url,'http://localhost').pathname;
+  if(pathname==='/api/runs'&&req.method==='GET')return res.json(histories[sid]||[]);
+  if(pathname.startsWith('/api/runs/')&&req.method==='GET'){
+    const id=pathname.slice('/api/runs/'.length).replace(/\.json$/,'');const run=(histories[sid]||[]).find(x=>x.id===id);
+    if(!run)return res.status(404).json({error:'Analysis not found in this browser session'});
+    res.setHeader('Content-Disposition','attachment; filename="analysis-result.json"');return res.json(run);
+  }
   if(pathname==='/health') return res.json({status:'ok'});
   if(pathname==='/api/status') return res.json({aiConfigured:!!process.env.GEMINI_API_KEY, fallback:'Computed statistics; not an AI answer'});
   if(handlers[pathname]){
