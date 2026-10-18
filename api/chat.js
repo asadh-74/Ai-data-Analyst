@@ -1,6 +1,6 @@
 const { GoogleGenAI } = require("@google/genai");
 
-const MODEL_CANDIDATES = [process.env.GEMINI_MODEL || "gemini-2.5-flash"];
+const MODEL_CANDIDATES = [process.env.GEMINI_MODEL || "gemini-3.8-flash"];
 
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");

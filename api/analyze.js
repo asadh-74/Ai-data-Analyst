@@ -1,9 +1,7 @@
 const { GoogleGenAI } = require("@google/genai");
 
-// Gemini 1.0 and 1.5 models (gemini-pro, gemini-1.5-flash, gemini-1.0-pro) were
-// permanently retired by Google in 2026 and now return 404 on every call.
-// These are the current, supported model IDs (checked most-capable/cheap first).
-const MODEL_CANDIDATES = [process.env.GEMINI_MODEL || "gemini-2.5-flash"];
+// Override GEMINI_MODEL privately when provider availability changes.
+const MODEL_CANDIDATES = [process.env.GEMINI_MODEL || "gemini-3.8-flash"];
 
 // Above this many rows we stop sending the raw file to the model and switch to
 // stats + a sample instead, so a 100k+ row CSV doesn't blow the prompt/token budget.
