@@ -6,6 +6,7 @@ function save(){fs.writeFileSync(file+'.tmp',JSON.stringify(sessions),{mode:0o60
 function csvCell(s){s=String(s??'');if(/^[=+@-]/.test(s.trimStart()))s="'"+s;return '"'+s.replaceAll('"','""')+'"'}
 function build(sources){
  if(!Array.isArray(sources)||sources.length<1||sources.length>5)throw Error('Import between one and five CSV sources');
+ if(sources.reduce((n,s)=>n+String(s.csvData||'').length,0)>750000)throw Error('Combined source limit: 750 KB');
  let headers,rows=[],input=0,duplicates=0;const seen=new Set();
  for(const s of sources){if(typeof s.csvData!=='string'||s.csvData.length>1000000)throw Error('Each source must be a CSV below 1 MB');let parsed=parseCSV(s.csvData);const hs=parsed.headers.map(h=>h.toLowerCase().replace(/\s+/g,'_'));if(new Set(hs).size!==hs.length)throw Error('Headers collide after normalization');if(!headers)headers=hs;if(headers.length!==hs.length||headers.some(h=>!hs.includes(h)))throw Error('All sources must contain the same columns');
  for(const raw of parsed.rows){input++;if(input>20000)throw Error('Use at most 20,000 combined rows');const row=Object.fromEntries(parsed.headers.map((h,i)=>[hs[i],raw[h].trim()]));const key=JSON.stringify(headers.map(h=>row[h]));if(seen.has(key)){duplicates++;continue}seen.add(key);rows.push(row)}}
@@ -20,9 +21,9 @@ function build(sources){
  let revenue=0,cost=0;const groups=new Map();for(const r of clean){const rev=Math.round(Number(r.revenue)*100),c=Math.round(Number(r.cost)*100);revenue+=rev;cost+=c;let g=groups.get(r.region)||{region:r.region,orders:0,revenue:0,cost:0};g.orders++;g.revenue+=rev;g.cost+=c;groups.set(r.region,g)}
  const dates=clean.map(r=>r.date).sort();return {generatedAt:new Date().toISOString(),sources:sources.map(s=>String(s.name||'CSV source').slice(0,120)),period:{from:dates[0],to:dates.at(-1)},quality:{inputRows:input,duplicatesRemoved:duplicates,exceptions:exceptions.length,validRows:clean.length,exceptionPreview:exceptions.slice(0,50)},kpis:{orders:clean.length,revenue:revenue/100,cost:cost/100,profit:(revenue-cost)/100,margin:revenue?Number(((revenue-cost)/revenue*100).toFixed(2)):null,averageOrder:revenue/100/clean.length},regions:[...groups.values()].map(g=>({...g,revenue:g.revenue/100,cost:g.cost/100})),cleanedCsv:[headers.map(csvCell).join(','),...clean.map(r=>headers.map(h=>csvCell(r[h])).join(','))].join('\n'),basis:'Computed from uploaded CSV snapshots; no external refresh or email delivery'};
 }
-function state(sid){if(!sessions[sid]){if(Object.keys(sessions).length>=100)delete sessions[Object.keys(sessions)[0]];sessions[sid]={jobs:[],reports:[],updated:Date.now()}}sessions[sid].updated=Date.now();return sessions[sid]}
+function state(sid){if(!sessions[sid]){if(Object.keys(sessions).length>=10)delete sessions[Object.keys(sessions)[0]];sessions[sid]={jobs:[],reports:[],updated:Date.now()}}sessions[sid].updated=Date.now();return sessions[sid]}
 function execute(s,job,now=Date.now()){
- try{const result=build(job.sources);const report={id:crypto.randomUUID(),jobId:job.id,title:job.title,created:new Date(now).toISOString(),result};s.reports.unshift(report);s.reports=s.reports.slice(0,20);job.lastStatus='completed';job.lastReportId=report.id;job.lastError=null}
+ try{const result=build(job.sources);const report={id:crypto.randomUUID(),jobId:job.id,title:job.title,created:new Date(now).toISOString(),result};s.reports.unshift(report);s.reports=s.reports.slice(0,5);job.lastStatus='completed';job.lastReportId=report.id;job.lastError=null}
  catch(e){job.lastStatus='failed';job.lastError=e.message}
  job.lastRun=new Date(now).toISOString();job.nextRun=now+job.intervalSeconds*1000;
 }
@@ -36,7 +37,7 @@ async function handle(req,res,sid,p){if(!p.startsWith('/api/business/'))return f
  if(req.method!=='POST'){res.status(405).json({error:'Use POST'});return true}let size=0,chunks=[];for await(const c of req){size+=c.length;if(size>2*1024*1024){res.status(413).json({error:'Sources exceed 2 MB'});return true}chunks.push(c)}const body=JSON.parse(Buffer.concat(chunks).toString());
  if(p==='/api/business/preview'){res.json(build(body.sources));return true}
  if(p==='/api/business/jobs'){
- if(s.jobs.length>=5)throw Error('Limit: five schedules per session');build(body.sources);if(![15,3600,86400,604800].includes(body.intervalSeconds))throw Error('Choose a supported interval');
+ if(s.jobs.length>=3)throw Error('Limit: three schedules per session');build(body.sources);if(![15,3600,86400,604800].includes(body.intervalSeconds))throw Error('Choose a supported interval');
  const job={id:crypto.randomUUID(),title:String(body.title||'Business report').slice(0,100),sources:body.sources,intervalSeconds:body.intervalSeconds,enabled:true,nextRun:Date.now()+body.intervalSeconds*1000,lastStatus:'scheduled'};s.jobs.unshift(job);save();res.status(201).json(summary(s));return true}
  const match=p.match(/^\/api\/business\/jobs\/([a-f0-9-]+)\/(run|toggle|delete)$/);if(match){const job=s.jobs.find(j=>j.id===match[1]);if(!job){res.status(404).json({error:'Schedule not found'});return true}if(match[2]==='run')execute(s,job);if(match[2]==='toggle'){job.enabled=!job.enabled;job.nextRun=Date.now()+job.intervalSeconds*1000}if(match[2]==='delete')s.jobs=s.jobs.filter(j=>j.id!==job.id);save();res.json(summary(s));return true}
  res.status(404).json({error:'Not found'});
