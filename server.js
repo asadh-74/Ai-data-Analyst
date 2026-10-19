@@ -7,7 +7,8 @@ let histories={};try{histories=JSON.parse(fs.readFileSync(runFile,'utf8'))}catch
 function persist(){fs.writeFileSync(runFile+'.tmp',JSON.stringify(histories),{mode:0o600});fs.renameSync(runFile+'.tmp',runFile)}
 const analyze=require('./api/analyze');
 const handlers = { '/api/analyze': require('./api/analyze'), '/api/chat': require('./api/chat'), '/api/inspect':(req,res)=>{try{res.json(analyze.inspect(req.body.csvData))}catch{res.status(422).json({error:'Invalid CSV: check unique headers, quoting and row lengths.'})}}, '/api/chart':(req,res)=>{try{res.json(analyze.chart(req.body))}catch{res.status(422).json({error:'Select valid columns and a numeric measure.'})}} };
-const assets = {'/':'index.html','/index.html':'index.html','/style.css':'style.css','/script.js':'script.js'};
+const business=require('./business');
+const assets = {'/reports':'reports.html','/reports.js':'reports.js','/workspace.css':'workspace.css','/':'index.html','/index.html':'index.html','/style.css':'style.css','/script.js':'script.js'};
 const types={'.html':'text/html; charset=utf-8','.css':'text/css','.js':'application/javascript'};
 const windows = new Map();
 const server = http.createServer(async(req,res)=>{
@@ -26,6 +27,7 @@ const server = http.createServer(async(req,res)=>{
   res.setHeader('X-Content-Type-Options','nosniff');
   res.setHeader('Referrer-Policy','strict-origin-when-cross-origin');
   const pathname = new URL(req.url,'http://localhost').pathname;
+  if(await business.handle(req,res,sid,pathname))return;
   if(pathname==='/api/runs'&&req.method==='GET')return res.json(histories[sid]||[]);
   if(pathname.startsWith('/api/runs/')&&req.method==='GET'){
     const id=pathname.slice('/api/runs/'.length).replace(/\.json$/,'');const run=(histories[sid]||[]).find(x=>x.id===id);

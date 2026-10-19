@@ -331,3 +331,5 @@ module.exports.chart = function(body){
   const groups=new Map();for(const row of rows){const label=row[x]||'(missing)';if(aggregation!=='count'&&(row[y]===''||!Number.isFinite(Number(row[y]))))continue;const g=groups.get(label)||{sum:0,count:0};g.count++;if(aggregation!=='count')g.sum+=Number(row[y]);groups.set(label,g)}
   const items=[...groups].slice(0,30);return {type:'bar',title:aggregation+' by '+x,labels:items.map(([k])=>k),values:items.map(([,g])=>aggregation==='count'?g.count:aggregation==='mean'?Number((g.sum/g.count).toFixed(2)):Number(g.sum.toFixed(2))),groupCount:groups.size,shownGroups:items.length};
 };
+
+module.exports.parseCSV = parseCSV;

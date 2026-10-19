@@ -18,3 +18,8 @@ Requests are limited to 2 MB and 20 analysis requests per minute per connection 
 5. Open a saved analysis and download its JSON or use the PDF export.
 
 History is isolated using an HTTP-only browser cookie and a server-side file (last 10 runs per browser, capped sessions). Free Render temporary storage resets on restart/deploy. Use fictional or sanitized data. Configure GEMINI_API_KEY only in private server environment variables; never commit credentials. Real AI availability depends on provider key validity and quota.
+
+## Automated business reporting
+Open `/reports` to merge up to five CSV sources using `date,order_id,revenue,cost,region`. Sources must use the same columns and currency. Exact duplicates are removed; every conflicting order-ID version and invalid row is excluded from KPIs. Calculations use integer cents.
+Schedules generate actual reports over the uploaded snapshot (15-second demo, hourly, daily, weekly), with pause/resume, run-now, JSON, clean CSV and printable HTML exports. Print the HTML to save a PDF. No external source refresh or email delivery is connected.
+Browser sessions isolate schedules/reports. The timer runs only while this web process is awake and catches up once for overdue jobs. Free Render suspension/redeployment cannot guarantee durable scheduling. Production needs durable storage and an always-on worker. `npm test` covers source merging, exceptions, scheduler execution and session isolation.
